@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ANIMAL QUEST: The Verb & Adjective Adventure</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Fredoka -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            font-family: 'Fredoka', cursive, sans-serif;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #7dd3fc;
+        }
+        #webgl-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        /* Custom UI Shadows & Glassmorphic Effects */
+        .game-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            border: 4px solid #facc15;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+        }
+        .btn-bounce {
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .btn-bounce:hover {
+            transform: translateY(-3px) scale(1.03);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+        }
+        .btn-bounce:active {
+            transform: translateY(2px) scale(0.98);
+        }
+        /* Pulse Animation */
+        @keyframes gentle-pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.06); }
+        }
+        .animate-pulse-gentle {
+            animation: gentle-pulse 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="relative">
+
+    <!-- 3D Canvas -->
+    <canvas id="webgl-canvas"></canvas>
+
+    <!-- UI OVERLAY LAYER -->
+    <div id="ui-container" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-10">
+        
+        <!-- Top HUD Bar -->
+        <div class="flex justify-between items-center w-full max-w-5xl mx-auto">
+            <!-- Stars & Score -->
+            <div class="pointer-events-auto flex items-center bg-yellow-400 border-4 border-yellow-600 px-4 py-2 rounded-2xl shadow-lg gap-3">
+                <span class="text-3xl">⭐</span>
+                <div>
+                    <div class="text-xs uppercase font-bold text-yellow-900 tracking-wider">Stars Collected</div>
+                    <div id="star-count" class="text-2xl font-black text-yellow-950">0</div>
+                </div>
+            </div>
+
+            <!-- Current Objective Tracker -->
+            <div class="pointer-events-auto hidden md:flex items-center bg-white/90 border-4 border-sky-400 px-5 py-2 rounded-2xl shadow-lg gap-3">
+                <span class="text-2xl">🗺️</span>
+                <div>
+                    <div id="mission-title" class="text-xs font-bold text-sky-600 uppercase">Mission 1: Action Safari</div>
+                    <div id="objective-text" class="text-sm font-semibold text-gray-800">Find the Jumping Rabbit!</div>
+                </div>
+            </div>
+
+            <!-- Action Buttons (Sound & Help) -->
+            <div class="pointer-events-auto flex gap-2">
+                <button id="btn-sound" onclick="toggleAudio()" class="btn-bounce bg-white border-4 border-emerald-400 p-3 rounded-2xl text-xl shadow-md">
+                    🔊
+                </button>
+                <button id="btn-help" onclick="toggleHelpModal()" class="btn-bounce bg-white border-4 border-purple-400 p-3 rounded-2xl text-xl shadow-md">
+                    ❓
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Objective Banner -->
+        <div class="pointer-events-auto md:hidden self-center bg-white/95 border-2 border-sky-400 px-4 py-1.5 rounded-xl shadow-md text-center max-w-xs my-1">
+            <span id="mobile-objective-text" class="text-xs font-bold text-sky-800">Find the Jumping Rabbit!</span>
+        </div>
+
+        <!-- Bottom Controls & Prompt Area -->
+        <div class="flex justify-between items-end w-full max-w-5xl mx-auto pb-2">
+            <!-- Virtual Touch Joystick (Mobile) -->
+            <div id="joystick-container" class="pointer-events-auto relative w-32 h-32 bg-white/40 border-4 border-white/60 rounded-full flex items-center justify-center shadow-inner md:hidden">
+                <div id="joystick-stick" class="w-14 h-14 bg-sky-500/80 border-2 border-white rounded-full shadow-md"></div>
+            </div>
+
+            <!-- Interaction Prompt Billboard (Center) -->
+            <div id="interaction-prompt" class="pointer-events-auto hidden animate-pulse-gentle bg-emerald-500 border-4 border-white text-white font-bold px-6 py-3 rounded-3xl shadow-2xl text-lg flex items-center gap-3">
+                <span class="text-2xl">✨</span>
+                <span id="prompt-text">Press [E] or Tap to Explore!</span>
+                <button onclick="triggerStationInteraction()" class="bg-yellow-400 text-yellow-950 px-3 py-1 rounded-xl text-sm font-black border-2 border-yellow-600">ACTION!</button>
+            </div>
+
+            <!-- Action / Jump Button (Mobile) -->
+            <div class="pointer-events-auto flex gap-2 md:hidden">
+                <button id="btn-mobile-jump" onclick="handleMobileJump()" class="w-16 h-16 bg-amber-400 border-4 border-white rounded-full text-2xl font-bold text-white shadow-lg flex items-center justify-center active:scale-95">
+                    🦘
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- START & DIFFICULTY SCREEN -->
+    <div id="screen-start" class="fixed inset-0 z-50 bg-sky-300/90 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="game-card max-w-lg w-full p-6 md:p-8 rounded-3xl text-center space-y-6">
+            <div class="space-y-2">
+                <span class="text-5xl">🦁 🐰 🐘</span>
+                <h1 class="text-3xl md:text-4xl font-black text-sky-900 tracking-wide uppercase">ANIMAL QUEST</h1>
+                <p class="text-sky-700 font-medium text-sm md:text-base">The Verb & Adjective Adventure</p>
+            </div>
+
+            <!-- Difficulty Selector -->
+            <div class="space-y-3 text-left">
+                <label class="block text-xs font-bold uppercase text-gray-500 tracking-wider text-center">Select Explorer Mode</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="mode-easy" onclick="setDifficulty('EASY')" class="btn-bounce p-4 border-4 border-emerald-400 bg-emerald-50 rounded-2xl flex flex-col items-center gap-1 text-center">
+                        <span class="text-3xl">🌱</span>
+                        <span class="font-bold text-emerald-800">Easy Explorer</span>
+                        <span class="text-xs text-emerald-600">Year 2 Beginner<br>(2-3 choices & hints)</span>
+                    </button>
+                    <button id="mode-brave" onclick="setDifficulty('BRAVE')" class="btn-bounce p-4 border-4 border-transparent bg-gray-100 rounded-2xl flex flex-col items-center gap-1 text-center opacity-70">
+                        <span class="text-3xl">🚀</span>
+                        <span class="font-bold text-gray-700">Brave Explorer</span>
+                        <span class="text-xs text-gray-500">Year 2 Intermediate<br>(Sentence builder challenges)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Controls Intro -->
+            <div class="bg-sky-50 p-3 rounded-xl border border-sky-200 text-xs text-sky-800 flex justify-around">
+                <span>💻 <b>Move:</b> WASD / Arrows</span>
+                <span>🖱️ <b>Camera:</b> Drag Mouse</span>
+                <span>📱 <b>Mobile:</b> Touch Joystick</span>
+            </div>
+
+            <button onclick="startGame()" class="btn-bounce w-full bg-yellow-400 hover:bg-yellow-300 text-yellow-950 font-black text-xl py-4 rounded-2xl border-4 border-yellow-600 shadow-xl">
+                START ADVENTURE 🌟
+            </button>
+        </div>
+    </div>
+
+    <!-- QUIZ / INTERACTION MODAL -->
+    <div id="screen-quiz" class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="game-card max-w-lg w-full p-6 rounded-3xl space-y-5 animate-pulse-gentle">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center border-b-2 border-gray-200 pb-3">
+                <div class="flex items-center gap-2">
+                    <span id="quiz-icon" class="text-3xl">🐰</span>
+                    <h3 id="quiz-title" class="text-xl font-bold text-sky-900">Action Safari</h3>
+                </div>
+                <span id="quiz-badge" class="bg-yellow-200 text-yellow-900 text-xs font-extrabold px-3 py-1 rounded-full border border-yellow-400">VERB TEST</span>
+            </div>
+
+            <!-- Question Prompt -->
+            <div class="space-y-2">
+                <p id="quiz-question" class="text-lg md:text-xl font-bold text-gray-800 text-center">Look at the rabbit! What action is it doing?</p>
+                <p id="quiz-hint" class="text-xs text-center text-sky-600 italic bg-sky-50 p-2 rounded-lg">Hint: Look at how it moves up and down!</p>
+            </div>
+
+            <!-- Dynamic Answer Options / Sentence Builder Area -->
+            <div id="quiz-options-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <!-- Option Buttons Injected via JS -->
+            </div>
+
+            <!-- Feedback Message -->
+            <div id="quiz-feedback" class="hidden p-3 rounded-xl text-center font-bold text-sm"></div>
+
+            <!-- Actions -->
+            <div class="flex justify-end pt-2">
+                <button id="btn-quiz-close" onclick="closeQuizModal()" class="text-gray-400 hover:text-gray-600 text-xs underline">
+                    Close & Explore More
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HELP MODAL -->
+    <div id="modal-help" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="game-card max-w-md w-full p-6 rounded-3xl space-y-4">
+            <h3 class="text-2xl font-black text-sky-900 text-center">How To Play 🎮</h3>
+            <ul class="text-sm space-y-2 text-gray-700">
+                <li class="flex items-center gap-2"><span>🗺️</span> <b>Explore:</b> Follow the jungle path to find cute animals.</li>
+                <li class="flex items-center gap-2"><span>✨</span> <b>Interact:</b> Walk near animals and press <b>E</b> or tap the Action button.</li>
+                <li class="flex items-center gap-2"><span>🎯</span> <b>Complete Missions:</b> Answer questions about <b>Verbs</b> (Action words) and <b>Adjectives</b> (Describing words).</li>
+                <li class="flex items-center gap-2"><span>⭐</span> <b>Earn Stars:</b> Collect stars to unlock the Final Champion Crown!</li>
+            </ul>
+            <button onclick="toggleHelpModal()" class="btn-bounce w-full bg-sky-500 text-white font-bold py-3 rounded-xl border-2 border-sky-700">Got it!</button>
+        </div>
+    </div>
+
+    <!-- COMPLETION / CHAMPION CELEBRATION SCREEN -->
+    <div id="screen-victory" class="fixed inset-0 z-50 bg-emerald-400/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="game-card max-w-lg w-full p-8 rounded-3xl text-center space-y-6">
+            <div class="space-y-2">
+                <span class="text-6xl animate-bounce inline-block">🏆</span>
+                <h1 class="text-3xl md:text-4xl font-black text-emerald-950 uppercase tracking-wide">ANIMAL CHAMPION!</h1>
+                <p class="text-emerald-800 font-semibold">You completed all missions successfully!</p>
+            </div>
+
+            <div class="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 space-y-3 text-left">
+                <div class="flex justify-between items-center text-emerald-900 font-bold border-b pb-2">
+                    <span>Total Stars Collected:</span>
+                    <span id="final-stars-count" class="text-2xl text-yellow-600">⭐ 12</span>
+                </div>
+                <div class="flex justify-between items-center text-emerald-900 font-bold border-b pb-2">
+                    <span>Verbs Mastered:</span>
+                    <span class="text-emerald-700">run, jump, swim, fly</span>
+                </div>
+                <div class="flex justify-between items-center text-emerald-900 font-bold">
+                    <span>Adjectives Mastered:</span>
+                    <span class="text-emerald-700">big, small, tall, fast</span>
+                </div>
+            </div>
+
+            <button onclick="restartGame()" class="btn-bounce w-full bg-yellow-400 text-yellow-950 font-black text-xl py-4 rounded-2xl border-4 border-yellow-600 shadow-xl">
+                PLAY AGAIN 🔄
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        /* ==========================================================================
+           1. GAME CONFIGURATION & STATE
+           ========================================================================== */
+        const GAME_STATE = {
+            difficulty: 'EASY', // EASY or BRAVE
+            stars: 0,
+            currentMission: 1, // 1 to 4
+            soundEnabled: true,
+            activeStation: null,
+            completedStations: new Set(),
+            isQuizActive: false
+        };
+
+        // Educational Database of Stations / Quizzes
+        const STATIONS = [
+            {
+                id: 'rabbit',
+                mission: 1,
+                name: 'Jumping Rabbit',
+                icon: '🐰',
+                type: 'verb',
+                position: { x: 0, z: -15 },
+                question: 'Look at the rabbit! What action word (verb) describes what it is doing?',
+                hint: 'Watch how it springs into the air!',
+                options: [
+                    { text: 'Jumping', correct: true, feedback: 'Great job! The rabbit jumps high!' },
+                    { text: 'Sleeping', correct: false, feedback: 'Try again! Is the rabbit awake or sleeping?' },
+                    { text: 'Swimming', correct: false, feedback: 'Try again! Swimming is done in water!' }
+                ]
+            },
+            {
+                id: 'fish',
+                mission: 1,
+                name: 'Swimming Fish',
+                icon: '🐟',
+                type: 'verb',
+                position: { x: 22, z: -30 },
+                question: 'Look into the river! What action is the fish doing?',
+                hint: 'It moves smoothly through the blue water.',
+                options: [
+                    { text: 'Flying', correct: false, feedback: 'Try again! Birds fly in the sky!' },
+                    { text: 'Swimming', correct: true, feedback: 'Splendid! The fish swims in the river!' },
+                    { text: 'Climbing', correct: false, feedback: 'Try again! Monkeys climb trees!' }
+                ]
+            },
+            {
+                id: 'monkey',
+                mission: 1,
+                name: 'Climbing Monkey',
+                icon: '🐒',
+                type: 'verb',
+                position: { x: -25, z: -45 },
+                question: 'Look up the tall palm tree! What is the monkey doing?',
+                hint: 'It is moving up towards the coconuts!',
+                options: [
+                    { text: 'Climbing', correct: true, feedback: 'Awesome! The monkey climbs up high!' },
+                    { text: 'Dancing', correct: false, feedback: 'Try again! It is moving up the trunk!' },
+                    { text: 'Eating', correct: false, feedback: 'Try again! It wants to reach the fruit first!' }
+                ]
+            },
+            {
+                id: 'elephant',
+                mission: 2,
+                name: 'Grand Elephant',
+                icon: '🐘',
+                type: 'adjective',
+                position: { x: 5, z: -65 },
+                question: 'Look at the elephant! Which describing word (adjective) best fits its size?',
+                hint: 'Compare it to the small flowers on the ground.',
+                options: [
+                    { text: 'Small', correct: false, feedback: 'Try again! A mouse is small.' },
+                    { text: 'Big', correct: true, feedback: 'Correct! The elephant is big and strong!' },
+                    { text: 'Short', correct: false, feedback: 'Try again! The elephant is huge!' }
+                ]
+            },
+            {
+                id: 'giraffe',
+                mission: 2,
+                name: 'Tall Giraffe',
+                icon: '🦒',
+                type: 'adjective',
+                position: { x: -20, z: -85 },
+                question: 'Observe the giraffe! Which adjective describes its neck?',
+                hint: 'It can reach leaves high above the ground.',
+                options: [
+                    { text: 'Tall', correct: true, feedback: 'Spot on! The giraffe has a very tall neck!' },
+                    { text: 'Short', correct: false, feedback: 'Try again! Look how high its head is!' },
+                    { text: 'Fast', correct: false, feedback: 'Try again! We are describing height!' }
+                ]
+            },
+            {
+                id: 'sentence_builder',
+                mission: 3,
+                name: 'Grammar Temple',
+                icon: '📜',
+                type: 'sentence',
+                position: { x: 15, z: -105 },
+                question: 'Build the sentence: "The _____ rabbit _____ fast."',
+                hint: 'Choose the right adjective and verb to complete the puzzle.',
+                options: [
+                    { text: 'small / jumps', correct: true, feedback: 'Excellent! "The small rabbit jumps fast."' },
+                    { text: 'big / swims', correct: false, feedback: 'Try again! Rabbits don\'t swim in trees!' },
+                    { text: 'tall / flies', correct: false, feedback: 'Try again! Rabbits don\'t have wings!' }
+                ]
+            },
+            {
+                id: 'final_champion',
+                mission: 4,
+                name: 'Champion Portal',
+                icon: '🏆',
+                type: 'final',
+                position: { x: 0, z: -130 },
+                question: 'Final Challenge: Which sentence uses both a VERB and an ADJECTIVE correctly?',
+                hint: 'Remember: Adjectives describe, Verbs show action!',
+                options: [
+                    { text: 'The happy lion runs fast.', correct: true, feedback: 'BRAVO! "happy" is an adjective and "runs" is a verb!' },
+                    { text: 'The run lion happy fast.', correct: false, feedback: 'Try again! That sentence order sounds mixed up.' },
+                    { text: 'Lion runs happy.', correct: false, feedback: 'Try again! We need a full descriptive sentence!' }
+                ]
+            }
+        ];
+
+        /* ==========================================================================
+           2. WEB AUDIO SYNTHESIZER (No external audio dependencies)
+           ========================================================================== */
+        const AudioSys = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            },
+            playTone(freq, type, duration, delay = 0) {
+                if (!GAME_STATE.soundEnabled || !this.ctx) return;
+                setTimeout(() => {
+                    try {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = type;
+                        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                        gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start();
+                        osc.stop(this.ctx.currentTime + duration);
+                    } catch(e){}
+                }, delay);
+            },
+            playCorrect() {
+                this.init();
+                this.playTone(523.25, 'triangle', 0.15, 0);   // C5
+                this.playTone(659.25, 'triangle', 0.15, 120); // E5
+                this.playTone(783.99, 'triangle', 0.3, 240);  // G5
+            },
+            playWrong() {
+                this.init();
+                this.playTone(200, 'sawtooth', 0.2, 0);
+                this.playTone(150, 'sawtooth', 0.3, 150);
+            },
+            playJump() {
+                this.init();
+                this.playTone(300, 'sine', 0.15, 0);
+            },
+            playClick() {
+                this.init();
+                this.playTone(400, 'sine', 0.05, 0);
+            },
+            playVictory() {
+                this.init();
+                const notes = [440, 554.37, 659.25, 880];
+                notes.forEach((freq, idx) => {
+                    this.playTone(freq, 'triangle', 0.3, idx * 150);
+                });
+            }
+        };
+
+        /* ==========================================================================
+           3. THREE.JS 3D ENGINE & SCENE SETUP
+           ========================================================================== */
+        let scene, camera, renderer;
+        let playerMesh, playerBody;
+        let animatedAnimals = [];
+        let stationObjects = [];
+        const clock = new THREE.Clock();
+
+        // Player Physics / Controls State
+        const playerState = {
+            pos: new THREE.Vector3(0, 0, 5),
+            velocity: new THREE.Vector3(),
+            speed: 12,
+            rotation: 0,
+            isGrounded: true,
+            jumpVelocity: 0
+        };
+
+        const keysPressed = {};
+        const touchJoystick = { active: false, x: 0, y: 0 };
+
+        function init3DScene() {
+            const canvas = document.getElementById('webgl-canvas');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb); // Sunny Sky Blue
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.012);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+            
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffaed, 0.8);
+            sunLight.position.set(40, 60, 20);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 200;
+            const d = 50;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            scene.add(sunLight);
+
+            // Build Environment
+            buildEnvironment();
+            buildPlayer();
+            buildStationsAndAnimals();
+
+            // Resize Event
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        /* Build Jungle Environment & Maze Paths */
+        function buildEnvironment() {
+            // Main Grass Floor
+            const groundGeo = new THREE.PlaneGeometry(300, 300);
+            const groundMat = new THREE.MeshLambertMaterial({ color: 0x55a630 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Path Mesh (Main Trail through Jungle)
+            const pathGeo = new THREE.PlaneGeometry(12, 160);
+            const pathMat = new THREE.MeshLambertMaterial({ color: 0xd4a373 });
+            const path = new THREE.Mesh(pathGeo, pathMat);
+            path.rotation.x = -Math.PI / 2;
+            path.position.set(0, 0.02, -70);
+            path.receiveShadow = true;
+            scene.add(path);
+
+            // Decorative Trees along Path Boundary
+            for (let i = 0; i < 90; i++) {
+                const side = (i % 2 === 0) ? 1 : -1;
+                const x = side * (10 + Math.random() * 25);
+                const z = 10 - Math.random() * 160;
+                createTree(x, z);
+            }
+
+            // Decorative Flowers & Rocks
+            for (let i = 0; i < 60; i++) {
+                const x = (Math.random() - 0.5) * 80;
+                const z = 10 - Math.random() * 150;
+                createRockOrFlower(x, z);
+            }
+
+            // Animated River Mesh (Station 2 area)
+            const riverGeo = new THREE.PlaneGeometry(30, 100);
+            const riverMat = new THREE.MeshPhongMaterial({ color: 0x3a86ff, transparent: true, opacity: 0.8 });
+            const river = new THREE.Mesh(riverGeo, riverMat);
+            river.rotation.x = -Math.PI / 2;
+            river.position.set(35, 0.05, -30);
+            scene.add(river);
+        }
+
+        function createTree(x, z) {
+            const treeGroup = new THREE.Group();
+            
+            // Trunk
+            const trunkGeo = new THREE.CylinderGeometry(0.6, 0.9, 4, 8);
+            const trunkMat = new THREE.MeshLambertMaterial({ color: 0x7f4f24 });
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.y = 2;
+            trunk.castShadow = true;
+            treeGroup.add(trunk);
+
+            // Foliage (Leaves)
+            const leavesGeo = new THREE.ConeGeometry(3, 6, 8);
+            const leavesMat = new THREE.MeshLambertMaterial({ color: 0x2d6a4f });
+            const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+            leaves.position.y = 6;
+            leaves.castShadow = true;
+            treeGroup.add(leaves);
+
+            treeGroup.position.set(x, 0, z);
+            scene.add(treeGroup);
+        }
+
+        function createRockOrFlower(x, z) {
+            if (Math.random() > 0.5) {
+                // Rock
+                const geo = new THREE.DodecahedronGeometry(0.6 + Math.random() * 0.4);
+                const mat = new THREE.MeshLambertMaterial({ color: 0x9c6644 });
+                const rock = new THREE.Mesh(geo, mat);
+                rock.position.set(x, 0.4, z);
+                rock.castShadow = true;
+                scene.add(rock);
+            } else {
+                // Flower
+                const flowerGroup = new THREE.Group();
+                const petalGeo = new THREE.SphereGeometry(0.2, 8, 8);
+                const colors = [0xff4d6d, 0xffb703, 0x7209b7, 0x4cc9f0];
+                const mat = new THREE.MeshLambertMaterial({ color: colors[Math.floor(Math.random()*colors.length)] });
+                for(let a=0; a<5; a++) {
+                    const petal = new THREE.Mesh(petalGeo, mat);
+                    petal.position.set(Math.cos(a*1.2)*0.3, 0.3, Math.sin(a*1.2)*0.3);
+                    flowerGroup.add(petal);
+                }
+                flowerGroup.position.set(x, 0, z);
+                scene.add(flowerGroup);
+            }
+        }
+
+        /* Build Player Avatar */
+        function buildPlayer() {
+            const playerGroup = new THREE.Group();
+
+            // Body
+            const bodyGeo = new THREE.BoxGeometry(1.2, 1.6, 0.8);
+            const bodyMat = new THREE.MeshLambertMaterial({ color: 0xffb703 }); // Yellow Explorer Vest
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 1.3;
+            body.castShadow = true;
+            playerGroup.add(body);
+
+            // Head
+            const headGeo = new THREE.SphereGeometry(0.7, 16, 16);
+            const headMat = new THREE.MeshLambertMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 2.4;
+            head.castShadow = true;
+            playerGroup.add(head);
+
+            // Safari Hat
+            const hatBrimGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.1, 16);
+            const hatMat = new THREE.MeshLambertMaterial({ color: 0x889696 });
+            const hatBrim = new THREE.Mesh(hatBrimGeo, hatMat);
+            hatBrim.position.y = 2.8;
+            playerGroup.add(hatBrim);
+
+            const hatTopGeo = new THREE.CylinderGeometry(0.7, 0.8, 0.6, 16);
+            const hatTop = new THREE.Mesh(hatTopGeo, hatMat);
+            hatTop.position.y = 3.1;
+            playerGroup.add(hatTop);
+
+            playerMesh = playerGroup;
+            scene.add(playerMesh);
+        }
+
+        /* Build Procedural Animals and Interactive Stations */
+        function buildStationsAndAnimals() {
+            STATIONS.forEach(station => {
+                const group = new THREE.Group();
+                group.position.set(station.position.x, 0, station.position.z);
+
+                // Interactive Glowing Ring Base
+                const ringGeo = new THREE.RingGeometry(2, 2.4, 32);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd166, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.y = 0.05;
+                group.add(ring);
+
+                // Build Procedural Animal per station
+                let animal;
+                if (station.id === 'rabbit') animal = createRabbit();
+                else if (station.id === 'fish') animal = createFish();
+                else if (station.id === 'monkey') animal = createMonkey();
+                else if (station.id === 'elephant') animal = createElephant();
+                else if (station.id === 'giraffe') animal = createGiraffe();
+                else animal = createTemplePedestal();
+
+                animal.position.y = 0;
+                group.add(animal);
+
+                // Floating Billboard / Indicator
+                const indicator = createFloatingIndicator(station.icon);
+                indicator.position.y = 4.5;
+                group.add(indicator);
+
+                scene.add(group);
+
+                // Store reference for animation and distance checking
+                stationObjects.push({
+                    config: station,
+                    group: group,
+                    animalMesh: animal,
+                    indicator: indicator
+                });
+            });
+        }
+
+        /* Animal Mesh Helpers */
+        function createRabbit() {
+            const g = new THREE.Group();
+            const bodyMat = new THREE.MeshLambertMaterial({ color: 0xf8f9fa });
+            // Body & Head
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), bodyMat);
+            body.position.y = 0.8;
+            g.add(body);
+            // Long Ears
+            const earGeo = new THREE.CylinderGeometry(0.1, 0.15, 1, 8);
+            const ear1 = new THREE.Mesh(earGeo, bodyMat);
+            ear1.position.set(-0.3, 1.8, 0);
+            ear1.rotation.z = -0.2;
+            const ear2 = ear1.clone();
+            ear2.position.x = 0.3;
+            ear2.rotation.z = 0.2;
+            g.add(ear1, ear2);
+            g.userData = { type: 'rabbit', initialY: 0 };
+            animatedAnimals.push(g);
+            return g;
+        }
+
+        function createFish() {
+            const g = new THREE.Group();
+            const mat = new THREE.MeshLambertMaterial({ color: 0xff70a6 });
+            const body = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.8, 8), mat);
+            body.rotation.z = Math.PI / 2;
+            body.position.y = 0.5;
+            g.add(body);
+            g.userData = { type: 'fish', initialY: 0.5 };
+            animatedAnimals.push(g);
+            return g;
+        }
+
+        function createMonkey() {
+            const g = new THREE.Group();
+            const mat = new THREE.MeshLambertMaterial({ color: 0x6b705c });
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 16), mat);
+            head.position.y = 1.2;
+            g.add(head);
+            g.userData = { type: 'monkey', initialY: 1.2 };
+            animatedAnimals.push(g);
+            return g;
+        }
+
+        function createElephant() {
+            const g = new THREE.Group();
+            const mat = new THREE.MeshLambertMaterial({ color: 0xadb5bd });
+            const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2, 3), mat);
+            body.position.y = 1.5;
+            const head = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 16), mat);
+            head.position.set(0, 2.2, 1.5);
+            g.add(body, head);
+            return g;
+        }
+
+        function createGiraffe() {
+            const g = new THREE.Group();
+            const mat = new THREE.MeshLambertMaterial({ color: 0xffb703 });
+            const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 4, 8), mat);
+            neck.position.set(0, 2.5, 0);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 1.2), mat);
+            head.position.set(0, 4.3, 0.4);
+            g.add(neck, head);
+            return g;
+        }
+
+        function createTemplePedestal() {
+            const g = new THREE.Group();
+            const mat = new THREE.MeshLambertMaterial({ color: 0xe9c46a });
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 1.5, 8), mat);
+            base.position.y = 0.75;
+            const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.8), new THREE.MeshBasicMaterial({ color: 0xffd166 }));
+            star.position.y = 2.2;
+            g.add(base, star);
+            g.userData = { type: 'star', initialY: 2.2 };
+            animatedAnimals.push(g);
+            return g;
+        }
+
+        function createFloatingIndicator(emojiStr) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.font = '80px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emojiStr, 64, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(spriteMat);
+            sprite.scale.set(2, 2, 1);
+            return sprite;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        /* ==========================================================================
+           4. GAME CONTROL & ANIMATION LOOP
+           ========================================================================== */
+        function setupInputListeners() {
+            // Keyboard Listeners
+            window.addEventListener('keydown', (e) => {
+                keysPressed[e.key.toLowerCase()] = true;
+                if (e.key.toLowerCase() === 'e') {
+                    triggerStationInteraction();
+                }
+                if (e.code === 'Space') {
+                    handleJump();
+                }
+            });
+            window.addEventListener('keyup', (e) => {
+                keysPressed[e.key.toLowerCase()] = false;
+            });
+
+            // Touch Joystick Listeners for Mobile
+            const joyContainer = document.getElementById('joystick-container');
+            const joyStick = document.getElementById('joystick-stick');
+            let joyTouchId = null;
+
+            joyContainer.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                joyTouchId = touch.identifier;
+                touchJoystick.active = true;
+            }, { passive: false });
+
+            window.addEventListener('touchmove', (e) => {
+                if (!touchJoystick.active) return;
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const touch = e.changedTouches[i];
+                    if (touch.identifier === joyTouchId) {
+                        const rect = joyContainer.getBoundingClientRect();
+                        const centerX = rect.left + rect.width / 2;
+                        const centerY = rect.top + rect.height / 2;
+                        let deltaX = touch.clientX - centerX;
+                        let deltaY = touch.clientY - centerY;
+                        const dist = Math.hypot(deltaX, deltaY);
+                        const maxDist = rect.width / 2;
+                        if (dist > maxDist) {
+                            deltaX = (deltaX / dist) * maxDist;
+                            deltaY = (deltaY / dist) * maxDist;
+                        }
+                        joyStick.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                        touchJoystick.x = deltaX / maxDist;
+                        touchJoystick.y = deltaY / maxDist;
+                    }
+                }
+            }, { passive: false });
+
+            const resetJoystick = (e) => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === joyTouchId) {
+                        touchJoystick.active = false;
+                        touchJoystick.x = 0;
+                        touchJoystick.y = 0;
+                        joyStick.style.transform = `translate(0px, 0px)`;
+                    }
+                }
+            };
+
+            window.addEventListener('touchend', resetJoystick);
+            window.addEventListener('touchcancel', resetJoystick);
+        }
+
+        function handleJump() {
+            if (playerState.isGrounded && !GAME_STATE.isQuizActive) {
+                playerState.jumpVelocity = 8;
+                playerState.isGrounded = false;
+                AudioSys.playJump();
+            }
+        }
+
+        function handleMobileJump() {
+            handleJump();
+        }
+
+        /* Update Player Movement & Physics */
+        function updatePlayer(delta) {
+            if (GAME_STATE.isQuizActive) return;
+
+            let moveX = 0;
+            let moveZ = 0;
+
+            // Keyboard input
+            if (keysPressed['w'] || keysPressed['arrowup']) moveZ -= 1;
+            if (keysPressed['s'] || keysPressed['arrowdown']) moveZ += 1;
+            if (keysPressed['a'] || keysPressed['arrowleft']) moveX -= 1;
+            if (keysPressed['d'] || keysPressed['arrowright']) moveX += 1;
+
+            // Touch Joystick input
+            if (touchJoystick.active) {
+                moveX = touchJoystick.x;
+                moveZ = touchJoystick.y;
+            }
+
+            const inputLen = Math.hypot(moveX, moveZ);
+            if (inputLen > 0.1) {
+                const normX = moveX / (inputLen > 1 ? inputLen : 1);
+                const normZ = moveZ / (inputLen > 1 ? inputLen : 1);
+
+                playerState.pos.x += normX * playerState.speed * delta;
+                playerState.pos.z += normZ * playerState.speed * delta;
+
+                // Smooth Rotation towards movement direction
+                const targetAngle = Math.atan2(normX, normZ);
+                playerMesh.rotation.y = targetAngle;
+            }
+
+            // Gravity & Jumping physics
+            if (!playerState.isGrounded) {
+                playerState.jumpVelocity -= 22 * delta;
+                playerState.pos.y += playerState.jumpVelocity * delta;
+                if (playerState.pos.y <= 0) {
+                    playerState.pos.y = 0;
+                    playerState.isGrounded = true;
+                    playerState.jumpVelocity = 0;
+                }
+            }
+
+            // World Boundaries (Keep Player in Jungle Trail)
+            playerState.pos.x = Math.max(-35, Math.min(35, playerState.pos.x));
+            playerState.pos.z = Math.max(-140, Math.min(10, playerState.pos.z));
+
+            // Update Mesh Position
+            playerMesh.position.copy(playerState.pos);
+
+            // Camera Smooth Follow (Third Person view)
+            const targetCamPos = new THREE.Vector3(
+                playerState.pos.x,
+                playerState.pos.y + 7,
+                playerState.pos.z + 12
+            );
+            camera.position.lerp(targetCamPos, 0.1);
+            camera.lookAt(playerState.pos.x, playerState.pos.y + 2, playerState.pos.z);
+        }
+
+        /* Update Animal Animations & Distance Proximity Checks */
+        function updateSceneElements(elapsedTime) {
+            // Animate procedural animals
+            animatedAnimals.forEach(item => {
+                if (item.userData.type === 'rabbit') {
+                    item.position.y = item.userData.initialY + Math.abs(Math.sin(elapsedTime * 4)) * 0.8;
+                } else if (item.userData.type === 'fish') {
+                    item.rotation.y = elapsedTime * 2;
+                    item.position.y = item.userData.initialY + Math.sin(elapsedTime * 3) * 0.2;
+                } else if (item.userData.type === 'monkey') {
+                    item.rotation.z = Math.sin(elapsedTime * 3) * 0.2;
+                } else if (item.userData.type === 'star') {
+                    item.rotation.y = elapsedTime * 1.5;
+                }
+            });
+
+            // Check Proximity to Stations
+            let nearStation = null;
+            stationObjects.forEach(obj => {
+                const dist = playerState.pos.distanceTo(obj.group.position);
+                // Animate floating indicators
+                obj.indicator.position.y = 4.5 + Math.sin(elapsedTime * 3) * 0.3;
+
+                if (dist < 4.5) {
+                    nearStation = obj;
+                }
+            });
+
+            // Update Proximity Prompt UI
+            const promptEl = document.getElementById('interaction-prompt');
+            if (nearStation && !GAME_STATE.isQuizActive) {
+                GAME_STATE.activeStation = nearStation;
+                promptEl.classList.remove('hidden');
+                document.getElementById('prompt-text').innerText = `Explore ${nearStation.config.name}!`;
+            } else {
+                GAME_STATE.activeStation = null;
+                promptEl.classList.add('hidden');
+            }
+        }
+
+        /* Main Render Loop */
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const elapsedTime = clock.getElapsedTime();
+
+            updatePlayer(delta);
+            updateSceneElements(elapsedTime);
+
+            renderer.render(scene, camera);
+        }
+
+        /* ==========================================================================
+           5. EDUCATIONAL QUIZ & UI INTERACTION HANDLERS
+           ========================================================================== */
+        function setDifficulty(mode) {
+            GAME_STATE.difficulty = mode;
+            AudioSys.playClick();
+            
+            const easyBtn = document.getElementById('mode-easy');
+            const braveBtn = document.getElementById('mode-brave');
+            if (mode === 'EASY') {
+                easyBtn.className = "btn-bounce p-4 border-4 border-emerald-400 bg-emerald-50 rounded-2xl flex flex-col items-center gap-1 text-center";
+                braveBtn.className = "btn-bounce p-4 border-4 border-transparent bg-gray-100 rounded-2xl flex flex-col items-center gap-1 text-center opacity-70";
+            } else {
+                braveBtn.className = "btn-bounce p-4 border-4 border-purple-400 bg-purple-50 rounded-2xl flex flex-col items-center gap-1 text-center";
+                easyBtn.className = "btn-bounce p-4 border-4 border-transparent bg-gray-100 rounded-2xl flex flex-col items-center gap-1 text-center opacity-70";
+            }
+        }
+
+        function startGame() {
+            AudioSys.playClick();
+            document.getElementById('screen-start').classList.add('hidden');
+            setupInputListeners();
+        }
+
+        function triggerStationInteraction() {
+            if (!GAME_STATE.activeStation || GAME_STATE.isQuizActive) return;
+            openQuizModal(GAME_STATE.activeStation.config);
+        }
+
+        function openQuizModal(stationConfig) {
+            GAME_STATE.isQuizActive = true;
+            AudioSys.playClick();
+
+            const modal = document.getElementById('screen-quiz');
+            document.getElementById('quiz-icon').innerText = stationConfig.icon;
+            document.getElementById('quiz-title').innerText = stationConfig.name;
+            document.getElementById('quiz-badge').innerText = stationConfig.type.toUpperCase();
+            document.getElementById('quiz-question').innerText = stationConfig.question;
+            document.getElementById('quiz-hint').innerText = `Hint: ${stationConfig.hint}`;
+
+            const optionsContainer = document.getElementById('quiz-options-container');
+            optionsContainer.innerHTML = '';
+
+            // Filter options based on difficulty if needed
+            let displayOptions = stationConfig.options;
+            if (GAME_STATE.difficulty === 'EASY' && displayOptions.length > 2) {
+                // Keep correct answer and 1 distractor for Easy mode
+                const correctOpt = displayOptions.find(o => o.correct);
+                const wrongOpt = displayOptions.find(o => !o.correct);
+                displayOptions = [correctOpt, wrongOpt].sort(() => Math.random() - 0.5);
+            }
+
+            displayOptions.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "btn-bounce bg-sky-100 hover:bg-sky-200 border-2 border-sky-400 text-sky-950 font-bold p-4 rounded-xl text-lg text-center shadow";
+                btn.innerText = opt.text;
+                btn.onclick = () => checkAnswer(opt, stationConfig);
+                optionsContainer.appendChild(btn);
+            });
+
+            document.getElementById('quiz-feedback').className = "hidden p-3 rounded-xl text-center font-bold text-sm";
+            modal.classList.remove('hidden');
+        }
+
+        function checkAnswer(selectedOption, stationConfig) {
+            const feedbackEl = document.getElementById('quiz-feedback');
+            feedbackEl.classList.remove('hidden');
+
+            if (selectedOption.correct) {
+                AudioSys.playCorrect();
+                feedbackEl.className = "p-3 rounded-xl text-center font-bold text-sm bg-emerald-100 border-2 border-emerald-400 text-emerald-900";
+                feedbackEl.innerText = `🎉 ${selectedOption.feedback}`;
+
+                if (!GAME_STATE.completedStations.has(stationConfig.id)) {
+                    GAME_STATE.completedStations.add(stationConfig.id);
+                    GAME_STATE.stars += 2;
+                    document.getElementById('star-count').innerText = GAME_STATE.stars;
+                }
+
+                setTimeout(() => {
+                    closeQuizModal();
+                    advanceMission();
+                }, 1600);
+            } else {
+                AudioSys.playWrong();
+                feedbackEl.className = "p-3 rounded-xl text-center font-bold text-sm bg-rose-100 border-2 border-rose-400 text-rose-900";
+                feedbackEl.innerText = `❌ ${selectedOption.feedback}`;
+            }
+        }
+
+        function closeQuizModal() {
+            GAME_STATE.isQuizActive = false;
+            document.getElementById('screen-quiz').classList.add('hidden');
+        }
+
+        function advanceMission() {
+            const total = STATIONS.length;
+            const completedCount = GAME_STATE.completedStations.size;
+
+            if (completedCount >= total) {
+                // VICTORY CHAMPION CELEBRATION
+                AudioSys.playVictory();
+                document.getElementById('final-stars-count').innerText = `⭐ ${GAME_STATE.stars}`;
+                document.getElementById('screen-victory').classList.remove('hidden');
+            } else {
+                // Update HUD Objectives
+                const nextStation = STATIONS.find(s => !GAME_STATE.completedStations.has(s.id));
+                if (nextStation) {
+                    document.getElementById('mission-title').innerText = `Mission ${nextStation.mission}: ${nextStation.name}`;
+                    document.getElementById('objective-text').innerText = `Find the ${nextStation.name}!`;
+                    document.getElementById('mobile-objective-text').innerText = `Objective: Find ${nextStation.name}!`;
+                }
+            }
+        }
+
+        function toggleAudio() {
+            GAME_STATE.soundEnabled = !GAME_STATE.soundEnabled;
+            document.getElementById('btn-sound').innerText = GAME_STATE.soundEnabled ? '🔊' : '🔇';
+        }
+
+        function toggleHelpModal() {
+            AudioSys.playClick();
+            const helpModal = document.getElementById('modal-help');
+            helpModal.classList.toggle('hidden');
+        }
+
+        function restartGame() {
+            AudioSys.playClick();
+            GAME_STATE.stars = 0;
+            GAME_STATE.completedStations.clear();
+            document.getElementById('star-count').innerText = '0';
+            document.getElementById('screen-victory').classList.add('hidden');
+            playerState.pos.set(0, 0, 5);
+            advanceMission();
+        }
+
+        /* ==========================================================================
+           6. INITIALIZATION ON WINDOW LOAD
+           ========================================================================== */
+        window.onload = function() {
+            init3DScene();
+            animate();
+        };
+    </script>
+</body>
+</html>
